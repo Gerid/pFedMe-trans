@@ -1,10 +1,10 @@
 import torch
 import os
 
-from kmeans import KMeans
+from kmeans_pytorch import kmeans
 from torch import nn
 from FLAlgorithms.users.userpFedMe import UserpFedMe
-from FLAlgorithms.users.userpFedTrans import UserpTrans, Cluster
+from FLAlgorithms.users.userpFedTrans import UserpFedTrans, Cluster
 from FLAlgorithms.servers.serverbase import Server
 from utils.model_utils import read_data, read_user_data
 import numpy as np
@@ -20,6 +20,8 @@ class pFedTrans(Server):
                          local_epochs, optimizer, num_users, times)
 
         # Initialize data for all  users
+        emb_dim = 128
+        attn_dim = 128
         data = read_data(dataset)
         total_users = len(data[0])
         self.K = K
@@ -27,13 +29,21 @@ class pFedTrans(Server):
 
         self.net_values = [*self.model.state_dict().values()]
         self.per_values = self.net_values[-2:]
-        self.emb_layer = nn.Linear(len(nn.utils.parameters_to_vector(self.per_values)),128)
+        self.emb_layer = nn.Linear(len(nn.utils.parameters_to_vector(self.per_values)),128).to(device)
         self.num_cluster = num_cluster
+
+        #intra_cluster_attn weight
+        self.inter_query_weight = nn.Linear(emb_dim, attn_dim).to(device)
+        self.inter_value_weight = nn.Linear(emb_dim, attn_dim).to(device)
+
+        #inter_cluster_attn weight
+        self.intra_query_weight = nn.Linear(emb_dim, attn_dim).to(device)
+        self.intra_value_weight = nn.Linear(emb_dim, attn_dim).to(device)
 
         self.clusters = [Cluster(c_id, model[0]) for c_id in range(self.num_cluster)]
         for i in range(total_users):
             id, train , test = read_user_data(i, data, dataset)
-            user = UserpFedMe(device, id, train, test, model, batch_size, learning_rate, beta, lamda, local_epochs, optimizer, K, personal_learning_rate)
+            user = UserpFedTrans(device, id, train, test, model, batch_size, learning_rate, beta, lamda, local_epochs, optimizer, K, personal_learning_rate)
             self.users.append(user)
             self.total_train_samples += user.train_samples
         print("Number of users / total users:",num_users, " / " ,total_users)
@@ -88,7 +98,7 @@ class pFedTrans(Server):
             for user in self.users:
                 user.train(self.local_epochs)
                 #get user embedding vec
-                user.emb_vec(self.emb_layer)
+                user.emb(self.emb_layer)
             
             # self.cluster = []
             self.form_cluster()
@@ -104,10 +114,10 @@ class pFedTrans(Server):
   
     def form_cluster(self, reform=False):
         #compute similarity k-means
-        kmeans = KMeans(n_clusters=self.num_cluster, mode='euclidean')
-        client_emb_list = [user.emb_vec for user in self.users] 
+        client_emb_list = [user.emb_vec.data.clone().reshape(1, -1) for user in self.users]
+        client_emb_list = torch.cat(client_emb_list, dim=0)
+        cluster_res = kmeans(X=client_emb_list, n_clusters=self.num_cluster, mode='euclidean')
 
-        cluster_res = kmeans.fit_predict(client_emb_list)
         if reform:
             self.clusters = [Cluster(c_id, self.model) for c_id in range(self.num_cluster)]
 
@@ -121,7 +131,5 @@ class pFedTrans(Server):
             #cluster.per_layer is the centroid per_model for clients within cluster
         
     def inter_cluster_agg(self):
-        LSHSelfAttention(self.)
-
-        
+        pass
    
