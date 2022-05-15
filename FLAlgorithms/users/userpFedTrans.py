@@ -17,6 +17,7 @@ class Cluster():
         self.users = []
         self.model = copy.deepcopy(model)
         self.net_values = None
+        self.base_values = None
         self.per_values = None
         self.selected_users = []
 
@@ -40,6 +41,39 @@ class Cluster():
         value_vec = nn.utils.parameters_to_vector(self.per_values).clone()
         self.emb_vec = emb_layer(value_vec)
 
+    def set_parameters(self, model):
+        for old_param, new_param, local_param in zip(self.model.parameters(), model.parameters(), self.local_model):
+            old_param.data = new_param.data.clone()
+            local_param.data = new_param.data.clone()
+        #self.local_weight_updated = copy.deepcopy(self.optimizer.param_groups[0]['params'])
+
+    def get_parameters(self):
+        for param in self.model.parameters():
+            param.detach()
+        return self.model.parameters()
+    
+    def clone_model_paramenter(self, param, clone_param):
+        for param, clone_param in zip(param, clone_param):
+            clone_param.data = param.data.clone()
+        return clone_param
+    
+    def get_updated_parameters(self):
+        return self.local_weight_updated
+    
+    def update_parameters(self, new_params):
+        for param , new_param in zip(self.model.parameters(), new_params):
+            param.data = new_param.data.clone()
+
+    def get_grads(self):
+        grads = []
+        for param in self.model.parameters():
+            if param.grad is None:
+                grads.append(torch.zeros_like(param.data))
+            else:
+                grads.append(param.grad.data)
+        return grads
+
+
 
 
 
@@ -59,6 +93,8 @@ class UserpFedTrans(User):
         self.optimizer = pFedMeOptimizer(self.model.parameters(), lr=self.personal_learning_rate, lamda=self.lamda)
         
         self.cluster_id = None
+        self.base_layer = None
+        self.per_layer = None
         self.emb_vec = None
 
 

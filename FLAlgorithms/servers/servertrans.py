@@ -22,6 +22,7 @@ class pFedTrans(Server):
         # Initialize data for all  users
         emb_dim = 128
         attn_dim = 128
+        num_heads = 8 
         data = read_data(dataset)
         total_users = len(data[0])
         self.K = K
@@ -35,10 +36,17 @@ class pFedTrans(Server):
         #intra_cluster_attn weight
         self.inter_query_weight = nn.Linear(emb_dim, attn_dim).to(device)
         self.inter_value_weight = nn.Linear(emb_dim, attn_dim).to(device)
+        self.inter_LN = nn.LayerNorm(attn_dim).to(device)
+
+        # 1-layer attention for simple verify
+        self.inter_attn = nn.MultiheadAttention(attn_dim, num_heads).to(device)
 
         #inter_cluster_attn weight
         self.intra_query_weight = nn.Linear(emb_dim, attn_dim).to(device)
         self.intra_value_weight = nn.Linear(emb_dim, attn_dim).to(device)
+        self.intra_LN = nn.LayerNorm(attn_dim).to(device)
+    
+        self.intra_attn = nn.MultiheadAttention(attn_dim, num_heads).to(device)
 
         self.clusters = [Cluster(c_id, model[0]) for c_id in range(self.num_cluster)]
         for i in range(total_users):
@@ -62,6 +70,7 @@ class pFedTrans(Server):
 
     def train(self):
         loss = []
+        every_recluster_eps = 5
         for glob_iter in range(self.num_glob_iters):
             print("-------------Round number: ",glob_iter, " -------------")
             # send all parameter for users 
@@ -101,10 +110,13 @@ class pFedTrans(Server):
                 user.emb(self.emb_layer)
             
             # self.cluster = []
-            self.form_cluster()
+            if glob_iter % every_recluster_eps == 0
+                self.form_cluster()
+
+            for cluster in self.clusters:
+                self.intra_cluster_agg(cluster)
 
             self.inter_cluster_agg()
-            self.intra_cluster_agg()
             
 
         #print(loss)
@@ -125,11 +137,24 @@ class pFedTrans(Server):
            self.users[client_id].cluster_id = cluster_res[client_id] 
            self.clusters[cluster_id].users.append(self.users[client_id])
         
+            #cluster.per_layer is the centroid per_model for clients within cluster
+        
+    def cluster_update(self):
         for cluster in self.clusters:
             cluster.update_model()
             cluster.emb_vec = self.emb_layer(cluster.per_values)
-            #cluster.per_layer is the centroid per_model for clients within cluster
-        
+
+   
+    def intra_cluster_agg(self, cluster):
+        user_emb_list = [user.emb_vec.data.clone().reshape(1, -1) for user in cluster]
+
+        x = torch.cat(user_emb_list, dim=0).unsqueeze(1)
+        x = self.intra_LN(x) 
+        q = self.intra_query_weight(x)
+        k = self.intra_query_weight(x)
+        v = torch.zeros_like(q)
+        user_model_list = 
+
+
     def inter_cluster_agg(self):
         pass
-   
