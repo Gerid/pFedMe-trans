@@ -24,7 +24,7 @@ class Cluster():
     def load_model(self, model):
         self.model.load_state_dict(model.state_dict())
 
-    def update_model(self):
+    def update_model(self, emb_layer):
         for param in self.model.parameters():
             param.data = torch.zeros_like(param.data)
         total_train = 0
@@ -37,6 +37,8 @@ class Cluster():
 
         self.net_values = [*self.model.state_dict().values()]
         self.per_values = self.net_values[-2:]
+        value_vec = nn.utils.parameters_to_vector(self.per_values).clone()
+        self.emb_vec = emb_layer(value_vec)
 
 
 
@@ -96,5 +98,6 @@ class UserpFedTrans(User):
     
     def emb(self, emb_layer:nn.modules):
         self.net_values = [*self.model.state_dict().values()]
-        self.per_values = self.net_values[-1:]
-        self.emb_vec = emb_layer(self.per_values)
+        self.per_values = self.net_values[-2:]
+        value_vec = nn.utils.parameters_to_vector(self.per_values).clone()
+        self.emb_vec = emb_layer(value_vec)
