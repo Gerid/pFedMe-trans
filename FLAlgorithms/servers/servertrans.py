@@ -1,5 +1,6 @@
 import torch
 import os
+import copy
 
 from kmeans_pytorch import kmeans
 from torch import nn
@@ -110,7 +111,7 @@ class pFedTrans(Server):
                 user.emb(self.emb_layer)
             
             # self.cluster = []
-            if glob_iter % every_recluster_eps == 0
+            if glob_iter % every_recluster_eps == 0:
                 self.form_cluster()
 
             for cluster in self.clusters:
@@ -153,7 +154,27 @@ class pFedTrans(Server):
         q = self.intra_query_weight(x)
         k = self.intra_query_weight(x)
         v = torch.zeros_like(q)
-        user_model_list = 
+        _, weights = self.intra_attn(q, k, v)
+        user_model_list = [user.per_values for user in cluster.users]
+        for w_i in weights:
+            model = add_model(user_model_list, w_ij)
+            user.
+            
+
+
+        user_emb_list = [user.emb_vec.data.clone().reshape(1, -1) for user in cluster]
+
+    def weighted_agg_model(self, models, weights):
+        res = None
+        for model, weight in zip(models, weights):
+            if res == None:
+                res = copy.deepcopy(model)
+                for key in res.state_dict().keys():
+                    res.state_dict()[key] = torch.zeros_like(model.state_dict()[key])
+            for param, new_param in zip(res.parameters(), model.parameters()):
+                param += copy.deepcopy(new_param) * weight
+        return res
+
 
 
     def inter_cluster_agg(self):
