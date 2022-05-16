@@ -1,6 +1,7 @@
 import torch
 import os
 
+import copy
 from kmeans_pytorch import kmeans
 from torch import nn
 from FLAlgorithms.users.userpFedMe import UserpFedMe
@@ -47,6 +48,7 @@ class pFedTrans(Server):
         self.intra_LN = nn.LayerNorm(attn_dim).to(device)
     
         self.intra_attn = nn.MultiheadAttention(attn_dim, num_heads).to(device)
+        self.alpha_layer = nn.Linear(emb_dim, 1).to(device)
 
         self.clusters = [Cluster(c_id, model[0]) for c_id in range(self.num_cluster)]
         for i in range(total_users):
@@ -99,7 +101,6 @@ class pFedTrans(Server):
         for glob_iter in range(self.num_glob_iters):
             print("-------------Round number: ",glob_iter, "(Attn phase) -------------")
 
-            self.send_parameters()
             print("Evaluate global model")
             print("")
             self.evaluate()
@@ -110,13 +111,27 @@ class pFedTrans(Server):
                 user.emb(self.emb_layer)
             
             # self.cluster = []
-            if glob_iter % every_recluster_eps == 0
+            if glob_iter % every_recluster_eps == 0:
                 self.form_cluster()
+
+            #simply do FedAvg
+            for cluster in self.clusters:
+                cluster.avg_update_base_values()
 
             for cluster in self.clusters:
                 self.intra_cluster_agg(cluster)
+                cluster.update_per_values()
+                cluster.get_emb(self.emb_layer)
 
             self.inter_cluster_agg()
+            for cluster in self.clusters:
+                for user in cluster.users:
+                    alpha = self.alpha_layer(user.emb_vec)
+                    user.per_values = self.model_add([cluster.per_values, user.per_values], [1-alpha,alpha])
+                    user.merge_base_per_model()
+                cluster.merge_base_per_model()
+            
+            self.model = 
             
 
         #print(loss)
@@ -139,6 +154,17 @@ class pFedTrans(Server):
         
             #cluster.per_layer is the centroid per_model for clients within cluster
         
+    def model_add(self, models, weights):
+        res = copy.deepcopy(models[0])
+        for param in res.parameters():
+            param.data = torch.zeros_like(param.data)
+            param.grad = torch.zeros_like(param.data)
+            print(param)
+        for model, weight in zip(models, weights):
+            for res_param, model_param in zip(res.parameters(), model.parameters()):
+                res_param.data += model_param.data.clone() * weight
+        return res
+    
     def cluster_update(self):
         for cluster in self.clusters:
             cluster.update_model()
@@ -153,7 +179,12 @@ class pFedTrans(Server):
         q = self.intra_query_weight(x)
         k = self.intra_query_weight(x)
         v = torch.zeros_like(q)
-        user_model_list = 
+        models = [user.per_values for user in cluster.users]
+        _, weights = self.intra_attn(q, k, v)
+        for i in range(len(cluster.users)):
+            cluster.users[i].per_value = self.model_add(models, weights)
+
+        #user_model_list = 
 
 
     def inter_cluster_agg(self):
