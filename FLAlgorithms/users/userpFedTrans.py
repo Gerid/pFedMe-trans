@@ -40,6 +40,21 @@ class Cluster():
         self.per_values = self.net_values[-2:]
         value_vec = nn.utils.parameters_to_vector(self.per_values).clone()
         self.emb_vec = emb_layer(value_vec)
+    
+
+    def avg_update_base_values(self):
+        for user in self.users:
+            total_train += user.train_samples
+        res_values = None
+        for user in self.users:
+            ratio = user.train_samples / total_train
+            if res_values == None:
+                for value in user.base_values:
+                    res_values.append(torch.zeros_like(value))
+            for v1, v2 in zip(res_values, user.base_values):
+                v1 += ratio * v2
+        self.base_values = res_values
+
 
     def set_parameters(self, model):
         for old_param, new_param, local_param in zip(self.model.parameters(), model.parameters(), self.local_model):
@@ -93,8 +108,8 @@ class UserpFedTrans(User):
         self.optimizer = pFedMeOptimizer(self.model.parameters(), lr=self.personal_learning_rate, lamda=self.lamda)
         
         self.cluster_id = None
-        self.base_layer = None
-        self.per_layer = None
+        self.base_values = None
+        self.per_values = None
         self.emb_vec = None
 
 
@@ -137,3 +152,24 @@ class UserpFedTrans(User):
         self.per_values = self.net_values[-2:]
         value_vec = nn.utils.parameters_to_vector(self.per_values).clone()
         self.emb_vec = emb_layer(value_vec)
+    
+    def get_per_values_vec(self):
+        return nn.utils.parameters_to_vector(self.per_values).clone()
+
+    # using updated per_values and base_values to update self.model
+    def merge_base_per_model(self):
+        #res_model = copy.deepcopy(self.model)
+        #for p1 ,p2 in zip(res_model.parameters(), self.model.parameters()):
+            #p1.data = torch.zeros_like(p2.data)
+            #p1.grad = torch.zeros_like(p2.data)
+        for p in self.model.parameters():
+            p.data = torch.zeros_like(p.data)
+            p.grad = torch.zeros_like(p.data)
+
+        res_values = []
+        res_values.extend(self.base_values)
+        res_values.extend(self.per_values)
+
+        for v1, v2 in zip(self.model.state_dict().values, res_values):
+            v1 += v2
+        del res_values
