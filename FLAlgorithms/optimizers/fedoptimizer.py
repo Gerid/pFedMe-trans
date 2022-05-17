@@ -70,7 +70,7 @@ class pFedMeOptimizer(Optimizer):
             loss = closure
         weight_update = local_weight_updated.copy()
         for group in self.param_groups:
-            for p, localweight in zip( group['params'], weight_update):
+            for p, localweight in zip(group['params'], weight_update):
                 p.data = localweight.data
         #return  p.data
         return  group['params']
