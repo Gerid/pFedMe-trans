@@ -13,7 +13,24 @@ import numpy as np
 from reformer_pytorch import *
  
 # Implementation for pFedMe Server
+class Inter_Attn_Model(nn.Module):
+    def __init__(self, emb_dim=128, attn_dim=128 ):
+        super(Inter_Attn_Model, self).__init__()
+        self.emb_dim = emb_dim
+        self.attn_dim = attn_dim
+        self.inter_query_weight = nn.Linear(emb_dim, attn_dim)
+        self.inter_value_weight = nn.Linear(emb_dim, attn_dim)
+        self.inter_LN = nn.LayerNorm(attn_dim)
 
+    def forward(self, x):
+        pass
+
+class Intra_Attn_Model(nn.Module):
+    def __init__(self):
+        super(self).__init__()
+
+    def forward(self, x):
+        pass
 class pFedTrans(Server):
     def __init__(self, device,  dataset, algorithm, model, batch_size, learning_rate, beta, lamda, num_glob_iters,
                  local_epochs, optimizer, num_users, K, personal_learning_rate, times, num_cluster=10):
@@ -35,6 +52,7 @@ class pFedTrans(Server):
         self.num_cluster = num_cluster
 
         #intra_cluster_attn weight
+        self.inter_attn_model = Inter_Attn_Model().to(device)
         self.inter_query_weight = nn.Linear(emb_dim, attn_dim).to(device)
         self.inter_value_weight = nn.Linear(emb_dim, attn_dim).to(device)
         self.inter_LN = nn.LayerNorm(attn_dim).to(device)
@@ -49,6 +67,8 @@ class pFedTrans(Server):
     
         self.intra_attn = nn.MultiheadAttention(attn_dim, num_heads).to(device)
         self.alpha_layer = nn.Linear(emb_dim, 1).to(device)
+        self.attn_loss = 0
+        self.attn_optimizer = 
 
         self.clusters = [Cluster(c_id, model[0]) for c_id in range(self.num_cluster)]
         for i in range(total_users):
@@ -105,7 +125,9 @@ class pFedTrans(Server):
             print("")
             self.evaluate()
 
+
             for user in self.users:
+                user.prev_model = copy.deepcopy(user.model)
                 user.train(self.local_epochs)
                 #get user embedding vec
                 user.emb(self.emb_layer)
@@ -130,8 +152,14 @@ class pFedTrans(Server):
                     user.per_values = self.model_add([cluster.per_values, user.per_values], [1-alpha,alpha])
                     user.merge_base_per_model()
                 cluster.merge_base_per_model()
-            
-            self.model = 
+
+            for user in self.users:
+                total_train += user.train_samples
+            for user in self.users:
+                ratio = user.train_samples / total_train
+                attn_loss += torch.linalg.norm(user.get_per_values_vec()) * ratio
+            self.attn_loss.backward()
+            self.attn_optimizer.step()
             
 
         #print(loss)
@@ -143,7 +171,7 @@ class pFedTrans(Server):
         #compute similarity k-means
         client_emb_list = [user.emb_vec.data.clone().reshape(1, -1) for user in self.users]
         client_emb_list = torch.cat(client_emb_list, dim=0)
-        cluster_res = kmeans(X=client_emb_list, n_clusters=self.num_cluster, mode='euclidean')
+        cluster_res = kmeans(X=client_emb_list, num_clusters=self.num_cluster, distance='euclidean', device=self.device)
 
         if reform:
             self.clusters = [Cluster(c_id, self.model) for c_id in range(self.num_cluster)]

@@ -152,6 +152,9 @@ class UserpFedTrans(User):
         self.per_values = self.net_values[-2:]
         value_vec = nn.utils.parameters_to_vector(self.per_values).clone()
         self.emb_vec = emb_layer(value_vec)
+    
+    def get_per_values_vec(self):
+        return nn.utils.parameters_to_vector(self.per_values).clone()
 
     # using updated per_values and base_values to update self.model
     def merge_base_per_model(self):
