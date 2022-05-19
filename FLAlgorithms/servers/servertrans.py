@@ -1,3 +1,4 @@
+from re import A
 import torch
 import os
 import copy
@@ -15,7 +16,7 @@ from reformer_pytorch import *
  
 # Implementation for pFedMe Server
 class Inter_Attn_Model(nn.Module):
-    def __init__(self, emb_dim=128, attn_dim=128 ):
+    def __init__(self, emb_dim=128, attn_dim=128, num_heads=8):
         super(Inter_Attn_Model, self).__init__()
         self.emb_dim = emb_dim
         self.attn_dim = attn_dim
@@ -23,14 +24,45 @@ class Inter_Attn_Model(nn.Module):
         self.inter_value_weight = nn.Linear(emb_dim, attn_dim)
         self.inter_LN = nn.LayerNorm(attn_dim)
 
-    def forward(self, x):
-        pass
+        # 1-layer attention for simple verify
+        self.inter_attn = nn.MultiheadAttention(attn_dim, num_heads).to(device)
 
-class Intra_Attn_Model(nn.Module):
-    def __init__(self):
+    def forward(self, x, models=None, prev_models=None):
+        x = self.inter_LN(x) 
+        q = self.inter_query_weight(x)
+        k = self.inter_query_weight(x)
+        v = torch.zeros_like(q)
+
+        _, weights = self.inter_attn(q, k, v)
+        return weights
+
+
+class Inter_Attn_Model(nn.Module):
+    def __init__(self, per_value_dim,  num_cluster, emb_dim, attn_dim, device, num_heads):
         super(self).__init__()
+        self.emb_layer = nn.Linear(per_value_dim).to(device)
+        self.num_cluster = num_cluster
+
+        #intra_cluster_attn weight
+        self.inter_attn_model = Inter_Attn_Model().to(device)
+        self.inter_query_weight = nn.Linear(emb_dim, attn_dim).to(device)
+        self.inter_value_weight = nn.Linear(emb_dim, attn_dim).to(device)
+        self.inter_LN = nn.LayerNorm(attn_dim).to(device)
+
+        # 1-layer attention for simple verify
+        self.inter_attn = nn.MultiheadAttention(attn_dim, num_heads).to(device)
+
+        #inter_cluster_attn weight
+        self.intra_query_weight = nn.Linear(emb_dim, attn_dim).to(device)
+        self.intra_value_weight = nn.Linear(emb_dim, attn_dim).to(device)
+        self.intra_LN = nn.LayerNorm(attn_dim).to(device)
+    
+        self.intra_attn = nn.MultiheadAttention(attn_dim, num_heads).to(device)
+        self.alpha_layer = nn.Linear(emb_dim, 1).to(device)
+
 
     def forward(self, x):
+
         pass
 class pFedTrans(Server):
     def __init__(self, device,  dataset, algorithm, model, batch_size, learning_rate, beta, lamda, num_glob_iters,
@@ -46,6 +78,7 @@ class pFedTrans(Server):
         total_users = len(data[0])
         self.K = K
         self.personal_learning_rate = personal_learning_rate
+        self.attn_learning_rate = 0.005
 
         self.net_values = [*self.model.state_dict().values()]
         self.per_values = self.net_values[-2:]
@@ -68,8 +101,8 @@ class pFedTrans(Server):
     
         self.intra_attn = nn.MultiheadAttention(attn_dim, num_heads).to(device)
         self.alpha_layer = nn.Linear(emb_dim, 1).to(device)
-        self.attn_loss = 0
-        self.attn_optimizer = 
+        self.attn_loss = nn.MSELoss().to(device)
+        self.attn_optimizer = optimizer(self.get_parameters(),lr=self.attn_learning_rate)
 
         self.clusters = [Cluster(c_id, model[0]) for c_id in range(self.num_cluster)]
         for i in range(total_users):
@@ -127,6 +160,9 @@ class pFedTrans(Server):
             self.evaluate()
 
 
+            if glob_iter is not 0:
+                self.attn_optimize()
+
             for user in self.users:
                 user.prev_model = copy.deepcopy(user.model)
                 user.train(self.local_epochs)
@@ -154,14 +190,7 @@ class pFedTrans(Server):
                     user.merge_base_per_model()
                 cluster.merge_base_per_model()
 
-            for user in self.users:
-                total_train += user.train_samples
-            for user in self.users:
-                ratio = user.train_samples / total_train
-                attn_loss += torch.linalg.norm(user.get_per_values_vec()) * ratio
-            self.attn_loss.backward()
-            self.attn_optimizer.step()
-            
+            self.attn_optimize()
 
         #print(loss)
         self.save_results()
@@ -210,13 +239,10 @@ class pFedTrans(Server):
         v = torch.zeros_like(q)
         _, weights = self.intra_attn(q, k, v)
         user_model_list = [user.per_values for user in cluster.users]
-        for w_i in weights:
-            model = add_model(user_model_list, w_ij)
-            user.
-            
+        for w_i, user in zip(weights,cluster.users):
+            per_values = self.weighted_agg_model(user_model_list, w_i)
+            user.per_values_temp = per_values
 
-
-        user_emb_list = [user.emb_vec.data.clone().reshape(1, -1) for user in cluster]
 
     def weighted_agg_model(self, models, weights):
         res = None
@@ -232,4 +258,27 @@ class pFedTrans(Server):
 
 
     def inter_cluster_agg(self):
-        pass
+        cluster_emb_list = [cluster.emb_vec.data.clone().reshape(1, -1) for cluster in self.clusters]
+        x = torch.cat(cluster_emb_list, dim=0).unsqueeze(1)
+        x = self.inter_LN(x) 
+        q = self.inter_query_weight(x)
+        k = self.inter_query_weight(x)
+        v = torch.zeros_like(q)
+        _, weights = self.inter_attn(q, k, v)
+        
+        cluster_model_list = [cluster.per_values for cluster in self.clusters]
+        for w_i, cluster in zip(weights,self.clusters):
+            per_values = self.weighted_agg_model(cluster_model_list, w_i)
+            cluster.per_values = per_values
+
+
+    def attn_optimize(self):
+        loss = 0
+        self.attn_optimizer.zero_grad()
+        for user in self.users:
+            total_train += user.train_samples
+        for user in self.users:
+            ratio = user.train_samples / total_train
+            loss += ratio*torch.linalg.norm(user.per_values - self.prev_per_values[user.id])
+        loss.backward()
+        self.attn_optimizer.step()
