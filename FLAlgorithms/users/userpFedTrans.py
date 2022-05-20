@@ -38,11 +38,13 @@ class Cluster():
 
         self.net_values = [*self.model.state_dict().values()]
         self.per_values = self.net_values[-2:]
+        self.base_values = self.net_values[:-2]
         value_vec = nn.utils.parameters_to_vector(self.per_values).clone()
         self.emb_vec = emb_layer(value_vec)
     
 
     def avg_update_base_values(self):
+        total_train = 0
         for user in self.users:
             total_train += user.train_samples
         res_values = None
