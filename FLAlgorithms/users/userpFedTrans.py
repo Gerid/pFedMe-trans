@@ -51,6 +51,9 @@ class Cluster():
         for user in self.users:
             ratio = user.train_samples / total_train
             if res_values == None:
+                if user.base_values == None:
+                    self.base_values = None
+                    return
                 for value in user.base_values:
                     res_values.append(torch.zeros_like(value))
             for v1, v2 in zip(res_values, user.base_values):
@@ -110,8 +113,9 @@ class UserpFedTrans(User):
         self.optimizer = pFedMeOptimizer(self.model.parameters(), lr=self.personal_learning_rate, lamda=self.lamda)
         
         self.cluster_id = None
-        self.base_values = None
-        self.per_values = None
+        self.net_values = [*self.model.state_dict().values()]
+        self.per_values = self.net_values[-2:]
+        self.base_values = self.net_values[:-2]
         self.emb_vec = None
 
 
@@ -146,6 +150,9 @@ class UserpFedTrans(User):
         #update local model as local_weight_upated
         #self.clone_model_paramenter(self.local_weight_updated, self.local_model)
         self.update_parameters(self.local_model)
+        self.net_values = [*self.model.state_dict().values()]
+        self.per_values = self.net_values[-2:]
+        self.base_values = self.net_values[:-2]
 
         return LOSS
     
