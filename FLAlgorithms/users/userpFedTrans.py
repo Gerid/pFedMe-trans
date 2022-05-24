@@ -19,6 +19,7 @@ class Cluster():
         self.net_values = None
         self.base_values = None
         self.per_values = None
+        self.emb_vec = None
         self.selected_users = []
 
     
@@ -43,22 +44,27 @@ class Cluster():
         self.emb_vec = emb_layer(value_vec)
     
 
-    def avg_update_base_values(self):
+    def avg_update_model(self):
         total_train = 0
         for user in self.users:
             total_train += user.train_samples
-        res_values = None
+        res_base_values = None
+        res_per_values = None
         for user in self.users:
             ratio = user.train_samples / total_train
-            if res_values == None:
-                if user.base_values == None:
-                    self.base_values = None
-                    return
-                for value in user.base_values:
-                    res_values.append(torch.zeros_like(value))
-            for v1, v2 in zip(res_values, user.base_values):
+            if res_base_values == None or res_per_values == None:
+                if user.base_values != None:
+                    for value in user.base_values:
+                        res_base_values.append(torch.zeros_like(value))
+                if user.per_values != None:
+                    for value in user.per_values:
+                        res_per_values.append(torch.zeros_like(value))
+            for v1, v2 in zip(res_base_values, user.base_values):
                 v1 += ratio * v2
-        self.base_values = res_values
+            for v1, v2 in zip(res_per_values, user.per_values):
+                v1 += ratio * v2
+        self.base_values = res_base_values
+        self.per_values = res_per_values
 
 
     def set_parameters(self, model):
@@ -93,6 +99,11 @@ class Cluster():
                 grads.append(param.grad.data)
         return grads
 
+    def emb(self, emb_layer:nn.modules):
+        value_vec = nn.utils.parameters_to_vector(self.per_values).clone()
+        self.emb_vec = emb_layer(value_vec)
+
+
 
 
 
@@ -117,6 +128,7 @@ class UserpFedTrans(User):
         self.per_values = self.net_values[-2:]
         self.base_values = self.net_values[:-2]
         self.emb_vec = None
+        self.temp_per_values = None
 
 
     def set_grads(self, new_grads):

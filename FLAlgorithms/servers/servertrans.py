@@ -148,12 +148,11 @@ class pFedTrans(Server):
 
             #simply do FedAvg
             for cluster in self.clusters:
-                cluster.avg_update_base_values()
+                cluster.avg_update_model()
+                cluster.emb(self.emb_layer)
 
             for cluster in self.clusters:
-                cluster.update_per_values()
                 self.intra_cluster_agg(cluster)
-                cluster.get_emb(self.emb_layer)
 
             self.inter_cluster_agg()
             for cluster in self.clusters:
@@ -216,7 +215,8 @@ class pFedTrans(Server):
         user_model_list = [user.per_values for user in cluster.users]
         for w_i, user in zip(weights,cluster.users):
             per_values = self.weighted_agg_model(user_model_list, w_i)
-            user.per_values_temp = per_values
+            #user.per_values_temp = per_values
+            user.per_values = per_values
 
 
     def weighted_agg_model(self, models, weights):
