@@ -48,21 +48,23 @@ class Cluster():
         total_train = 0
         for user in self.users:
             total_train += user.train_samples
-        res_base_values = None
-        res_per_values = None
+        res_base_values = []
+        res_per_values = []
         for user in self.users:
             ratio = user.train_samples / total_train
-            if res_base_values == None or res_per_values == None:
+            if len(res_base_values) == 0 and len(res_per_values) == 0:
                 if user.base_values != None:
                     for value in user.base_values:
                         res_base_values.append(torch.zeros_like(value))
                 if user.per_values != None:
                     for value in user.per_values:
                         res_per_values.append(torch.zeros_like(value))
-            for v1, v2 in zip(res_base_values, user.base_values):
-                v1 += ratio * v2
-            for v1, v2 in zip(res_per_values, user.per_values):
-                v1 += ratio * v2
+            if user.base_values != None:
+                for v1, v2 in zip(res_base_values, user.base_values):
+                    v1 += ratio * v2
+            if user.per_values != None:
+                for v1, v2 in zip(res_per_values, user.per_values):
+                    v1 += ratio * v2
         self.base_values = res_base_values
         self.per_values = res_per_values
 

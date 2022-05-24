@@ -184,8 +184,7 @@ class pFedTrans(Server):
         if reform:
             self.clusters = [Cluster(c_id, self.model) for c_id in range(self.num_cluster)]
 
-        for client_id, cluster_id in enumerate(cluster_res):
-           self.users[client_id].cluster_id = cluster_res[client_id] 
+        for client_id, cluster_id  in enumerate(cluster_res[0]):
            self.clusters[cluster_id].users.append(self.users[client_id])
         
             #cluster.per_layer is the centroid per_model for clients within cluster
@@ -208,26 +207,29 @@ class pFedTrans(Server):
 
    
     def intra_cluster_agg(self, cluster):
-        user_emb_list = [user.emb_vec.data.clone().reshape(1, -1) for user in cluster]
+        user_emb_list = [user.emb_vec.data.clone().reshape(1, -1) for user in cluster.users]
 
         x = torch.cat(user_emb_list, dim=0).unsqueeze(1)
-        weights = self.attn_model(x)
-        user_model_list = [user.per_values for user in cluster.users]
-        for w_i, user in zip(weights,cluster.users):
-            per_values = self.weighted_agg_model(user_model_list, w_i)
+        weights = self.attn_model(x).squeeze(0)
+        user_model_list = [copy.deepcopy(user.per_values) for user in cluster.users]
+        weights = weights.squeeze(0)
+        print('weights.size:', weights.size())
+        for i in range(weights.size()[0]):
+            print('weights[i].size', weights[i].size())
+            w = [weights[i][j] for j in range(weights[i].size()[0])]
+            cluster.users[i].per_values = self.weighted_agg_model(user_model_list, w)
             #user.per_values_temp = per_values
-            user.per_values = per_values
 
 
     def weighted_agg_model(self, models, weights):
-        res = None
+        res = []
+        # note 'model' here is list of values ,
         for model, weight in zip(models, weights):
-            if res == None:
-                res = copy.deepcopy(model)
-                for key in res.state_dict().keys():
-                    res.state_dict()[key] = torch.zeros_like(model.state_dict()[key])
-            for param, new_param in zip(res.parameters(), model.parameters()):
-                param += copy.deepcopy(new_param) * weight
+            if len(res) == 0:
+                for value in model:
+                    res.append(torch.zeros_like(value))
+            for i in range(len(res)):
+                res[i] += copy.deepcopy(model[i]) * weight
         return res
 
 
