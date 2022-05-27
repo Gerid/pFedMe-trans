@@ -1,4 +1,5 @@
 from re import A
+from sklearn import model_selection
 import torch
 import os
 import copy
@@ -50,7 +51,7 @@ class pFedTrans(Server):
         total_users = len(data[0])
         self.K = K
         self.personal_learning_rate = personal_learning_rate
-        self.attn_learning_rate = 0.005
+        self.attn_learning_rate = 0.01
         self.prev_per_values = [0] * total_users
 
         self.net_values = [*self.model.state_dict().values()]
@@ -58,21 +59,14 @@ class pFedTrans(Server):
         self.emb_layer = nn.Linear(len(nn.utils.parameters_to_vector(self.per_values)),128).to(device)
         self.num_cluster = num_cluster
 
-        #intra_cluster_attn weight
-        self.attn_model = Attn_Model().to(device)
+        self.intra_attn_model = Attn_Model().to(device)
+        self.inter_attn_model = Attn_Model().to(device)
 
-        # 1-layer attention for simple verify
-
-        #inter_cluster_attn weight
-        #self.intra_query_weight = nn.Linear(emb_dim, attn_dim).to(device)
-        #self.intra_value_weight = nn.Linear(emb_dim, attn_dim).to(device)
-        #self.intra_LN = nn.LayerNorm(attn_dim).to(device)
-    
-        #self.intra_attn = nn.MultiheadAttention(attn_dim, num_heads).to(device)
         self.alpha_layer = nn.Linear(emb_dim, 1).to(device)
         self.attn_optimizer = torch.optim.SGD([
                 {'params': self.emb_layer.parameters()},
-                {'params': self.attn_model.parameters()},
+                {'params': self.inter_attn_model.parameters()},
+                {'params': self.intra_attn_model.parameters()},
                 {'params': self.alpha_layer.parameters()},
             ], lr=self.attn_learning_rate, momentum=0.9)
         self.attn_loss = nn.MSELoss().to(device)
@@ -98,33 +92,7 @@ class pFedTrans(Server):
             user.set_grads(grads)
 
     def train(self):
-        loss = []
         every_recluster_eps = 5
-        for glob_iter in range(self.num_glob_iters):
-            print("-------------Round number: ",glob_iter, " -------------")
-            # send all parameter for users 
-            self.send_parameters()
-
-            # Evaluate gloal model on user for each interation
-            print("Evaluate global model")
-            print("")
-            self.evaluate()
-
-            # do update for all users not only selected users
-            for user in self.users:
-                user.train(self.local_epochs) #* user.train_samples
-            
-            # choose several users to send back upated model to server
-            # self.personalized_evaluate()
-            self.selected_users = self.select_users(glob_iter,self.num_users)
-
-            # Evaluate gloal model on user for each interation
-            #print("Evaluate persionalized model")
-            #print("")
-            self.evaluate_personalized_model()
-            #self.aggregate_parameters()
-            self.persionalized_aggregate_parameters()
-        
         for glob_iter in range(self.num_glob_iters):
             print("-------------Round number: ",glob_iter, "(Attn phase) -------------")
 
@@ -132,16 +100,21 @@ class pFedTrans(Server):
             print("")
             self.evaluate()
 
-
-            if glob_iter is not 0:
-                self.attn_optimize()
-
-            for user in self.users:
-                user.prev_model = copy.deepcopy(user.model)
+            self.prev_per_values = []
+            
+            self.attn_optimizer.zero_grad()
+            for i, user in enumerate(self.users):
+                if glob_iter != 0:
+                    user.prev_per_values = [0]*len(user.per_values)
+                    self.copy_value(user.per_values, user.prev_per_values, if_grad=True)
                 user.train(self.local_epochs)
                 #get user embedding vec
                 user.emb(self.emb_layer)
+            self.evaluate()
             
+            #after local training, optimize attn modules, with loss betweeen prev_values and local updated
+            if glob_iter != 0:
+                self.attn_optimize()
             # self.cluster = []
             if glob_iter % every_recluster_eps == 0:
                 self.form_cluster()
@@ -159,16 +132,11 @@ class pFedTrans(Server):
                 for user in cluster.users:
                     alpha = self.alpha_layer(user.emb_vec)
                     alpha = torch.sigmoid(alpha)
-                    user.per_values = self.model_add([cluster.per_values, user.per_values], [1-alpha,alpha])
+                    user.per_values = self.weighted_agg_model([cluster.per_values, user.per_values], [1-alpha,alpha])
                     user.merge_base_per_model()
                 cluster.merge_base_per_model()
 
-            self.attn_optimize()
-            self.evaluate()
-
-            for user in self.users:
-                self.prev_per_values[user.id] = user.model
-
+            self.evaluate_personalized_model()
 
         #print(loss)
         self.save_results()
@@ -207,21 +175,27 @@ class pFedTrans(Server):
 
    
     def intra_cluster_agg(self, cluster):
-        user_emb_list = [user.emb_vec.data.clone().reshape(1, -1) for user in cluster.users]
+        user_emb_list = [user.emb_vec.clone().reshape(1, -1) for user in cluster.users]
 
         x = torch.cat(user_emb_list, dim=0).unsqueeze(1)
-        weights = self.attn_model(x).squeeze(0)
-        user_model_list = [copy.deepcopy(user.per_values) for user in cluster.users]
+        if len(cluster.users) == 1:
+            return
+        weights = self.intra_attn_model(x).squeeze(0)
+        user_model_list = [] 
+        for i in range(len(cluster.users)):
+            per_value = cluster.users[i].per_values
+            for i, v in enumerate(per_value):
+                per_value[i] = v.clone()
+            user_model_list.append(per_value)
         weights = weights.squeeze(0)
-        print('weights.size:', weights.size())
         for i in range(weights.size()[0]):
-            print('weights[i].size', weights[i].size())
             w = [weights[i][j] for j in range(weights[i].size()[0])]
-            cluster.users[i].per_values = self.weighted_agg_model(user_model_list, w)
+            per_value = self.weighted_agg_model(user_model_list, w)
+            cluster.users[i].per_values = per_value
             #user.per_values_temp = per_values
 
 
-    def weighted_agg_model(self, models, weights):
+    def weighted_agg_model(self, models, weights, use_grad=False):
         res = []
         # note 'model' here is list of values ,
         for model, weight in zip(models, weights):
@@ -229,29 +203,63 @@ class pFedTrans(Server):
                 for value in model:
                     res.append(torch.zeros_like(value))
             for i in range(len(res)):
-                res[i] += copy.deepcopy(model[i]) * weight
+                if use_grad:
+                    res[i] += model[i].clone() * weight
+                else:
+                    res[i] += model[i].data.clone() * weight
         return res
 
 
 
     def inter_cluster_agg(self):
-        cluster_emb_list = [cluster.emb_vec.data.clone().reshape(1, -1) for cluster in self.clusters]
+        cluster_emb_list = [cluster.emb_vec.clone().reshape(1, -1) for cluster in self.clusters]
         x = torch.cat(cluster_emb_list, dim=0).unsqueeze(1)
-        weights = self.attn_model(x)
+        weights = self.inter_attn_model(x).squeeze(0)
         
         cluster_model_list = [cluster.per_values for cluster in self.clusters]
-        for w_i, cluster in zip(weights,self.clusters):
-            per_values = self.weighted_agg_model(cluster_model_list, w_i)
-            cluster.per_values = per_values
-
+        for i in range(len(self.clusters)):
+            per_value = self.clusters[i].per_values
+            for i, v in enumerate(per_value):
+                per_value[i] = v.clone()
+            cluster_model_list.append(per_value)
+        for i in range(weights.size()[0]):
+            w = [weights[i][j] for j in range(weights[i].size()[0])]
+            per_values = self.weighted_agg_model(cluster_model_list, w)
+            self.clusters[i].per_values = per_values
 
     def attn_optimize(self):
         loss = 0
+        total_train = 0
         self.attn_optimizer.zero_grad()
         for user in self.users:
             total_train += user.train_samples
-        for user in self.users:
+        for i, user in enumerate(self.users):
             ratio = user.train_samples / total_train
-            loss += ratio*torch.linalg.norm(user.per_values - self.prev_per_values[user.id])
+            loss += ratio * torch.linalg.norm(nn.utils.parameters_to_vector(user.per_values) - nn.utils.parameters_to_vector(user.prev_per_values))
         loss.backward()
         self.attn_optimizer.step()
+
+    def copy_value(self, value, value1=None,  if_grad=False, if_tensor=False):
+        if value1 == None:
+            value1 = [0] * len(value)
+        assert (len(value1) == len(value))
+        for i in range(len(value1)):
+            if if_grad==False:
+                value1[i] = value[i].detach()
+            else:
+                value1[i] = value[i].clone()
+        if if_tensor == True:
+            res = torch.tensor([]).to(self.device)
+            for v in value1:
+                res = torch.cat((res, v.unsqueeze(0)), 0)
+            return res
+
+        return value1
+
+    def save_model(self):
+        model_path = os.path.join("models", self.dataset)
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+        for i in range(len(self.clusters)):
+            torch.save(self.clusters[i].model, os.path.join(model_path, "cluster",i , ".pt"))
+

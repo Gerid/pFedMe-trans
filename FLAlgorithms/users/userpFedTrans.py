@@ -105,6 +105,23 @@ class Cluster():
         value_vec = nn.utils.parameters_to_vector(self.per_values).clone()
         self.emb_vec = emb_layer(value_vec)
 
+    def merge_base_per_model(self):
+        #res_model = copy.deepcopy(self.model)
+        #for p1 ,p2 in zip(res_model.parameters(), self.model.parameters()):
+            #p1.data = torch.zeros_like(p2.data)
+            #p1.grad = torch.zeros_like(p2.data)
+        for p in self.model.parameters():
+            p.data = torch.zeros_like(p.data)
+            p.grad = torch.zeros_like(p.data)
+
+        res_values = []
+        res_values.extend(self.base_values)
+        res_values.extend(self.per_values)
+
+        for v1, v2 in zip(self.model.state_dict().values(), res_values):
+            v1 += v2
+     
+
 
 
 
@@ -131,6 +148,7 @@ class UserpFedTrans(User):
         self.base_values = self.net_values[:-2]
         self.emb_vec = None
         self.temp_per_values = None
+        self.prev_per_values = []
 
 
     def set_grads(self, new_grads):
@@ -185,14 +203,12 @@ class UserpFedTrans(User):
         #for p1 ,p2 in zip(res_model.parameters(), self.model.parameters()):
             #p1.data = torch.zeros_like(p2.data)
             #p1.grad = torch.zeros_like(p2.data)
-        for p in self.model.parameters():
-            p.data = torch.zeros_like(p.data)
-            p.grad = torch.zeros_like(p.data)
-
         res_values = []
         res_values.extend(self.base_values)
         res_values.extend(self.per_values)
 
-        for v1, v2 in zip(self.model.state_dict().values, res_values):
-            v1 += v2
+        for param,  new_param in zip(self.model.parameters(), res_values):
+            param.data = new_param.data.clone() 
+        #for new_param, old_param in zip(self.model.parameters(), self.local_model):
+            #old_param.data = new_param.data.clone()
         del res_values
