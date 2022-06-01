@@ -44,23 +44,29 @@ class pFedTrans(Server):
                          local_epochs, optimizer, num_users, times)
 
         # Initialize data for all  users
-        emb_dim = 128
-        attn_dim = 128
-        num_heads = 8 
+        if model[1] != 'dnn':
+            emb_dim = 128
+            attn_dim = 128
+            num_heads = 8 
+            self.attn_learning_rate = 0.01
+            self.intra_attn_model = Attn_Model().to(device)
+            self.inter_attn_model = Attn_Model().to(device)
+        if model[1] == 'dnn':
+            emb_dim = 64
+            self.attn_learning_rate = 0.05
+            self.intra_attn_model = Attn_Model(emb_dim=64, attn_dim=64, num_heads=8).to(device)
+            self.inter_attn_model = Attn_Model(emb_dim=64, attn_dim=64, num_heads=8).to(device)
         data = read_data(dataset)
         total_users = len(data[0])
         self.K = K
         self.personal_learning_rate = personal_learning_rate
-        self.attn_learning_rate = 0.01
         self.prev_per_values = [0] * total_users
 
         self.net_values = [*self.model.state_dict().values()]
         self.per_values = self.net_values[-2:]
-        self.emb_layer = nn.Linear(len(nn.utils.parameters_to_vector(self.per_values)),128).to(device)
+        self.emb_layer = nn.Linear(len(nn.utils.parameters_to_vector(self.per_values)),emb_dim).to(device)
         self.num_cluster = num_cluster
 
-        self.intra_attn_model = Attn_Model().to(device)
-        self.inter_attn_model = Attn_Model().to(device)
 
         self.alpha_layer = nn.Linear(emb_dim, 1).to(device)
         self.attn_optimizer = torch.optim.SGD([
@@ -110,13 +116,12 @@ class pFedTrans(Server):
                 user.train(self.local_epochs)
                 #get user embedding vec
                 user.emb(self.emb_layer)
-            self.evaluate()
             
             #after local training, optimize attn modules, with loss betweeen prev_values and local updated
             if glob_iter != 0:
                 self.attn_optimize()
             # self.cluster = []
-            if glob_iter % every_recluster_eps == 0:
+            if glob_iter == 0:
                 self.form_cluster()
 
             #simply do FedAvg

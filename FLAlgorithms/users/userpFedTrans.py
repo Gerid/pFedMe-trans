@@ -209,6 +209,6 @@ class UserpFedTrans(User):
 
         for param,  new_param in zip(self.model.parameters(), res_values):
             param.data = new_param.data.clone() 
-        #for new_param, old_param in zip(self.model.parameters(), self.local_model):
-            #old_param.data = new_param.data.clone()
+        for new_param, old_param in zip(self.model.parameters(), self.local_model):
+            old_param.data = new_param.data.clone()
         del res_values
