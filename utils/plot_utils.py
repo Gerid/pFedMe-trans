@@ -23,7 +23,7 @@ def get_training_data_value(num_users=100, loc_ep1=5, Numb_Glob_Iters=10, lamb=[
     for i in range(Numb_Algs):
         string_learning_rate = str(learning_rate[i])  
         string_learning_rate = string_learning_rate + "_" +str(beta[i]) + "_" +str(lamb[i])
-        if(algorithms_list[i] == "pFedMe" or algorithms_list[i] == "pFedMe_p"):
+        if(algorithms_list[i] == "pFedMe" or algorithms_list[i] == "pFedMe_p" ):
             algorithms_list[i] = algorithms_list[i] + "_" + string_learning_rate + "_" + str(num_users) + "u" + "_" + str(batch_size[i]) + "b" + "_" +str(loc_ep1[i]) + "_"+ str(k[i])  + "_"+ str(personal_learning_rate[i])
         else:
             algorithms_list[i] = algorithms_list[i] + "_" + string_learning_rate + "_" + str(num_users) + "u" + "_" + str(batch_size[i]) + "b"  "_" +str(loc_ep1[i])
@@ -104,7 +104,8 @@ def plot_summary_one_figure(num_users=100, loc_ep1=5, Numb_Glob_Iters=10, lamb=[
     start = 0
     linestyles = ['-', '--', '-.', ':', '-', '--', '-.', ':']
     for i in range(Numb_Algs):
-        plt.plot(train_acc[i, 1:], linestyle=linestyles[i], label=algorithms_list[i] )
+        label = get_label_name(algorithms_list[i])
+        plt.plot(train_acc[i, 1:], linestyle=linestyles[i], label=label )
     plt.legend(loc='lower right')
     plt.ylabel('Training Accuracy')
     plt.xlabel('Global rounds ' + '$K_g$')
@@ -116,7 +117,8 @@ def plot_summary_one_figure(num_users=100, loc_ep1=5, Numb_Glob_Iters=10, lamb=[
 
     plt.grid(True)
     for i in range(Numb_Algs):
-        plt.plot(train_loss[i, start:], linestyle=linestyles[i], label=algorithms_list[i] )
+        label = get_label_name(algorithms_list[i])
+        plt.plot(train_loss[i, start:], linestyle=linestyles[i], label=label,clip_on=False )
         #plt.plot(train_loss1[i, 1:], label=algs_lbl1[i])
     plt.legend(loc='upper right')
     plt.ylabel('Training Loss')
@@ -128,8 +130,9 @@ def plot_summary_one_figure(num_users=100, loc_ep1=5, Numb_Glob_Iters=10, lamb=[
     plt.figure(3)
     plt.grid(True)
     for i in range(Numb_Algs):
+        label = get_label_name(algorithms_list[i])
         plt.plot(glob_acc[i, start:], linestyle=linestyles[i],
-                 label=algorithms_list[i])
+                 label=label, clip_on=False)
         #plt.plot(glob_acc1[i, 1:], label=algs_lbl1[i])
     plt.legend(loc='lower right')
     #plt.ylim([0.6, glob_acc.max()])
@@ -153,6 +156,8 @@ def get_label_name(name):
             return "pFedMe"+ " (PM)"
         else:
             return "pFedMe"+ " (GM)"
+    if name.startswith("pFedTrans_p"):
+        return "Ours"
     if name.startswith("PerAvg"):
         return "Per-FedAvg"
     if name.startswith("FedAvg"):
