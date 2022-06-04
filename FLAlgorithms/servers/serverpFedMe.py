@@ -1,6 +1,6 @@
 import torch
 import os
-
+import time
 from FLAlgorithms.users.userpFedMe import UserpFedMe
 from FLAlgorithms.servers.serverbase import Server
 from utils.model_utils import read_data, read_user_data
@@ -48,6 +48,7 @@ class pFedMe(Server):
             # Evaluate gloal model on user for each interation
             print("Evaluate global model")
             print("")
+            ep_start_time = time.time()
             self.evaluate()
 
             # do update for all users not only selected users
@@ -64,6 +65,9 @@ class pFedMe(Server):
             self.evaluate_personalized_model()
             #self.aggregate_parameters()
             self.persionalized_aggregate_parameters()
+            ep_end_time = time.time()
+            cost_time = ep_end_time - ep_start_time
+            print("ep cost time : {:.2f}".format(cost_time))
 
 
         #print(loss)

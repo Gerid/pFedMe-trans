@@ -3,7 +3,7 @@ from sklearn import model_selection
 import torch
 import os
 import copy
-
+import time
 import copy
 from kmeans_pytorch import kmeans
 from torch import nn
@@ -43,7 +43,19 @@ class pFedTrans(Server):
         super().__init__(device, dataset,algorithm, model[0], batch_size, learning_rate, beta, lamda, num_glob_iters,
                          local_epochs, optimizer, num_users, times)
 
+        self.recluster = False 
         # Initialize data for all  users
+        if model[1] == 'dnn':
+            emb_dim = 64
+            self.attn_learning_rate = 0.05
+            self.intra_attn_model = Attn_Model(emb_dim=64, attn_dim=64, num_heads=8).to(device)
+            self.inter_attn_model = Attn_Model(emb_dim=64, attn_dim=64, num_heads=8).to(device)
+        elif model[1] == 'cnn':
+            emb_dim = 64 
+            self.attn_learning_rate = 0.05
+            self.intra_attn_model = Attn_Model().to(device)
+            self.inter_attn_model = Attn_Model().to(device)
+            self.recluster = True
         if model[1] != 'dnn':
             emb_dim = 128
             attn_dim = 128
@@ -51,11 +63,6 @@ class pFedTrans(Server):
             self.attn_learning_rate = 0.01
             self.intra_attn_model = Attn_Model().to(device)
             self.inter_attn_model = Attn_Model().to(device)
-        if model[1] == 'dnn':
-            emb_dim = 64
-            self.attn_learning_rate = 0.05
-            self.intra_attn_model = Attn_Model(emb_dim=64, attn_dim=64, num_heads=8).to(device)
-            self.inter_attn_model = Attn_Model(emb_dim=64, attn_dim=64, num_heads=8).to(device)
         data = read_data(dataset)
         total_users = len(data[0])
         self.K = K
@@ -98,12 +105,13 @@ class pFedTrans(Server):
             user.set_grads(grads)
 
     def train(self):
-        every_recluster_eps = 5
+        every_recluster_eps = 5 
         for glob_iter in range(self.num_glob_iters):
             print("-------------Round number: ",glob_iter, "(Attn phase) -------------")
 
             print("Evaluate global model")
             print("")
+            ep_start_time = time.time()
             self.evaluate()
 
             self.prev_per_values = []
@@ -123,6 +131,9 @@ class pFedTrans(Server):
             # self.cluster = []
             if glob_iter == 0:
                 self.form_cluster()
+                
+            if self.recluster == True and glob_iter % every_recluster_eps == 0 and glob_iter != 0:
+                self.form_cluster(self.recluster)
 
             #simply do FedAvg
             for cluster in self.clusters:
@@ -142,6 +153,9 @@ class pFedTrans(Server):
                 cluster.merge_base_per_model()
 
             self.evaluate_personalized_model()
+            ep_end_time = time.time()
+            cost_time = ep_end_time - ep_start_time
+            print("ep cost time : {:.2f}".format(cost_time))
 
         #print(loss)
         self.save_results()
