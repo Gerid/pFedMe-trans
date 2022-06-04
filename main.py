@@ -12,6 +12,7 @@ from FLAlgorithms.servers.serverperavg import PerAvg
 from FLAlgorithms.servers.servertrans import pFedTrans
 from FLAlgorithms.trainmodel.models import *
 from utils.plot_utils import *
+import logging
 import torch
 torch.manual_seed(0)
 

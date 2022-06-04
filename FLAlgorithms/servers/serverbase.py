@@ -145,6 +145,9 @@ class Server:
             alg = alg + "_" + str(self.K) + "_" + str(self.personal_learning_rate)
         alg = alg + "_" + str(self.times)
         if (len(self.rs_glob_acc_per) != 0 &  len(self.rs_train_acc_per) & len(self.rs_train_loss_per)) :
+            path = "./results"
+            if not os.path.exists(path):
+                os.makedirs(path.decode('utf-8'))
             with h5py.File("./results/"+'{}.h5'.format(alg, self.local_epochs), 'w') as hf:
                 hf.create_dataset('rs_glob_acc', data=self.rs_glob_acc_per)
                 hf.create_dataset('rs_train_acc', data=self.rs_train_acc_per)

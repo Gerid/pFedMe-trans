@@ -1,6 +1,7 @@
-from re import A
+from re import A, S
 from sklearn import model_selection
 import torch
+import logging
 import os
 import copy
 import time
@@ -74,6 +75,21 @@ class pFedTrans(Server):
         self.emb_layer = nn.Linear(len(nn.utils.parameters_to_vector(self.per_values)),emb_dim).to(device)
         self.num_cluster = num_cluster
 
+        self.logger = logging.getLogger('server')
+        self.logger.setLevel(logging.DEBUG)
+        #create file handler
+        self.fh = logging.FileHandler('server.log')
+        self.fh.setLevel(logging.INFO)
+
+        self.ch = logging.StreamHandler()
+        self.ch.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        self.fh.setFormatter(formatter)
+        self.ch.setFormatter(formatter)
+        self.logger.addHandler(self.fh)
+        self.logger.addHandler(self.ch)
+        
+        self.logger.info('creating server')
 
         self.alpha_layer = nn.Linear(emb_dim, 1).to(device)
         self.attn_optimizer = torch.optim.SGD([
@@ -135,6 +151,12 @@ class pFedTrans(Server):
             if self.recluster == True and glob_iter % every_recluster_eps == 0 and glob_iter != 0:
                 self.form_cluster(self.recluster)
 
+            for cluster in self.clusters:
+                print("===================================")
+                print("cluster users:")
+                for user in cluster.users:
+                    print(user.id)
+
             #simply do FedAvg
             for cluster in self.clusters:
                 cluster.avg_update_model()
@@ -155,7 +177,7 @@ class pFedTrans(Server):
             self.evaluate_personalized_model()
             ep_end_time = time.time()
             cost_time = ep_end_time - ep_start_time
-            print("ep cost time : {:.2f}".format(cost_time))
+            self.logger.info("iteration : {} totally cost time : {:.2f}".format(glob_iter, cost_time))
 
         #print(loss)
         self.save_results()
@@ -277,6 +299,8 @@ class pFedTrans(Server):
 
     def save_model(self):
         model_path = os.path.join("models", self.dataset)
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         for i in range(len(self.clusters)):
