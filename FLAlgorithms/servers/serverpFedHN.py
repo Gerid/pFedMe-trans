@@ -1,4 +1,5 @@
 import torch
+import logging
 import os
 import time
 from FLAlgorithms.users.userpFedHN import UserpFedHN
@@ -12,18 +13,23 @@ import numpy as np
 
 class pFedMe(Server):
     def __init__(self, device,  dataset, algorithm, model, batch_size, learning_rate, beta, lamda, num_glob_iters,
-                 local_epochs, optimizer, num_users, K, personal_learning_rate, times):
+                 local_epochs, optimizer, num_users, K, personal_learning_rate, times ):
         super().__init__(device, dataset,algorithm, model[0], batch_size, learning_rate, beta, lamda, num_glob_iters,
                          local_epochs, optimizer, num_users, times)
 
         # Initialize data for all  users
         data = read_data(dataset)
         total_users = len(data[0])
+        self.logger = logging.getLogger()
         self.K = K
-        embed_dim = 
-        hyper_hid = 
-        n_hidden = 
-        n_kernels = 
+        embed_dim = -1
+        embed_dim = embed_dim
+        if embed_dim == -1:
+            embed_dim = int(1 + num_users / 4)
+
+        hyper_hid = 100
+        n_hidden = 3
+        n_kernels = 16
         self.hnet = CNNHyperPC(
             num_users, embed_dim, hidden_dim=hyper_hid, n_hidden=n_hidden,
             n_kernels=n_kernels
