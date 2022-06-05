@@ -167,11 +167,6 @@ class pFedTrans(Server):
                         res += " "
                     self.logger.info(res)
 
-            for cluster in self.clusters:
-                print("===================================")
-                print("cluster users:")
-                for user in cluster.users:
-                    print(user.id)
 
             #simply do FedAvg
             for cluster in self.clusters:
@@ -320,5 +315,5 @@ class pFedTrans(Server):
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         for i in range(len(self.clusters)):
-            torch.save(self.clusters[i].model, os.path.join(model_path, "cluster",str(i) , ".pt"))
+            torch.save(self.clusters[i].model, os.path.join(model_path,"cluster{}.pt".format(str(i))))
 
