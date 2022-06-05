@@ -147,9 +147,25 @@ class pFedTrans(Server):
             # self.cluster = []
             if glob_iter == 0:
                 self.form_cluster()
+                self.logger.info("iteration {} cluster results:".format(glob_iter))
+                for idx, cluster in enumerate(self.clusters):
+                    res = "cluster {} : ".format(idx)
+
+                    for user in cluster.users:
+                        res += str(user.id)
+                        res += " "
+                    self.logger.info(res)
                 
             if self.recluster == True and glob_iter % every_recluster_eps == 0 and glob_iter != 0:
                 self.form_cluster(self.recluster)
+                self.logger.info("iteration {} cluster results:".format(glob_iter))
+                for idx, cluster in enumerate(self.clusters):
+                    res = "cluster {} : ".format(idx)
+
+                    for user in cluster.users:
+                        res += str(user.id)
+                        res += " "
+                    self.logger.info(res)
 
             for cluster in self.clusters:
                 print("===================================")
