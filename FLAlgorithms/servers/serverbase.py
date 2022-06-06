@@ -4,6 +4,7 @@ import numpy as np
 import h5py
 from utils.model_utils import Metrics
 import copy
+import logging 
 
 class Server:
     def __init__(self, device, dataset,algorithm, model, batch_size, learning_rate ,beta, lamda,
@@ -26,6 +27,23 @@ class Server:
         self.algorithm = algorithm
         self.rs_train_acc, self.rs_train_loss, self.rs_glob_acc,self.rs_train_acc_per, self.rs_train_loss_per, self.rs_glob_acc_per = [], [], [], [], [], []
         self.times = times
+        self.logger = logging.getLogger('server')
+        self.logger.setLevel(logging.DEBUG)
+        #create file handler
+        self.fh = logging.FileHandler('server.log')
+        self.fh.setLevel(logging.INFO)
+
+        self.ch = logging.StreamHandler()
+        self.ch.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        self.fh.setFormatter(formatter)
+        self.ch.setFormatter(formatter)
+        self.logger.addHandler(self.fh)
+        self.logger.addHandler(self.ch)
+        
+        self.logger.info('creating server')
+
+
         # Initialize the server's grads to zeros
         #for param in self.model.parameters():
         #    param.data = torch.zeros_like(param.data)

@@ -64,7 +64,6 @@ class UserpFedHN(User):
         test_acc = 0
         loss = 0
         for x, y in self.testloaderfull:
-            
             x, y = x.to(self.device), y.to(self.device)
             output = self.model(x)
             pred = self.local_layers(output)
@@ -74,3 +73,19 @@ class UserpFedHN(User):
             #print(self.id + ", Test Loss:", loss)
      
         return test_acc, loss, y.shape[0]
+
+
+    def train_error_and_loss(self):
+        self.model.eval()
+        self.local_layers.eval()
+        train_acc = 0
+        loss = 0
+        for x, y in self.trainloaderfull:
+            x, y = x.to(self.device), y.to(self.device)
+            output = self.model(x)
+            pred = self.local_layers(output)
+            train_acc += (torch.sum(torch.argmax(pred, dim=1) == y)).item()
+            loss += self.loss(pred, y)
+            #print(self.id + ", Train Accuracy:", train_acc)
+            #print(self.id + ", Train Loss:", loss)
+        return train_acc, loss , self.train_samples

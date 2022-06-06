@@ -1,6 +1,4 @@
 from typing import OrderedDict
-from bidict import OrderedBidict
-from flask import g
 import torch
 import random
 import logging
@@ -33,7 +31,9 @@ class pFedHN(Server):
         if embed_dim == -1:
             embed_dim = int(1 + num_users / 4)
         
-        self.eval_every = 100
+        self.eval_every = 1 
+        self.device = device
+        self.choice_per_iter = 6
 
         hyper_hid = 100
         n_hidden = 3
@@ -41,9 +41,11 @@ class pFedHN(Server):
         self.hnet = CNNHyperPC(
             num_users, embed_dim, hidden_dim=hyper_hid, n_hidden=n_hidden,
             n_kernels=n_kernels
-        ).to(device)
+        )
+        self.hnet = self.hnet.to(device)
 
         self.net = CNNTargetPC(n_kernels=n_kernels).to(device)
+        self.net = self.net.to(device)
         lr = 5e-2
         embed_lr = embed_lr if embed_lr is not None else lr
         wd = 1e-3
@@ -93,61 +95,62 @@ class pFedHN(Server):
             ep_start_time = time.time()
 
             self.hnet.train()
-            node_id = random.choice(range(self.num_users))
+            for _ in range(self.choice_per_iter):
+                node_id = random.choice(range(self.num_users))
 
-            user = self.users[node_id]
-            weights =self.hnet(torch.tensor([node_id], dtype=torch.long).to(self.device))
-            self.net.load_state_dict(weights)
-            user.set_parameters(self.net)
+                user = self.users[node_id]
+                weights =self.hnet(torch.tensor([node_id], dtype=torch.long).to(self.device))
+                self.net.load_state_dict(weights)
+                user.set_parameters(self.net)
 
-            #previous acc and loss
-            prv_acc, prv_loss, ns = user.test_acc_loss()
-            step_iter.set_description(
-                f"Step: {glob_iter+1}, User ID: {node_id}, Loss: {prv_loss:.4f},  Acc: {prv_acc:.4f}"
-            )
-            # init inner optim
-            inner_optimizer = torch.optim.SGD(
-                user.model.parameters(),lr=self.inner_lr,momentum=.9,
-                weight_decay=self.inner_wd
-            )
+                #previous acc and loss
+                prv_acc, prv_loss, ns = user.test_acc_loss()
+                self.logger.info(
+                    f"Step: {glob_iter+1}, User ID: {node_id}, Loss: {prv_loss:.4f},  Acc: {prv_acc/ns:.4f}"
+                )
+                # init inner optim
+                inner_optimizer = torch.optim.SGD(
+                    user.model.parameters(),lr=self.inner_lr,momentum=.9,
+                    weight_decay=self.inner_wd
+                )
 
-            # storing theta_i for later calculating delta theta
-            inner_state = OrderedDict({k: tensor.data for k, tensor in weights.items()})
+                # storing theta_i for later calculating delta theta
+                inner_state = OrderedDict({k: tensor.data for k, tensor in weights.items()})
 
             
-            for i in range(self.inner_steps):
-                user.model.train()
-                user.local_layers.train()
-                inner_optimizer.zero_grad()
+                for i in range(self.inner_steps):
+                    user.model.train()
+                    user.local_layers.train()
+                    inner_optimizer.zero_grad()
+                    self.optimizer.zero_grad()
+                    user.local_optimizer.zero_grad()
+                    #user.train(self.net)
+                    X, y = user.get_next_train_batch()
+                    inner_optimizer.step()
+                    output = user.model(X)
+                    pred = user.local_layers(output)
+                    loss = user.loss(pred, y)
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(user.model.parameters(), 50)
+                    inner_optimizer.step()
+                    user.local_optimizer.step()
+            
                 self.optimizer.zero_grad()
-                user.local_optimizer.zero_grad()
-                #user.train(self.net)
-                X, y = user.get_next_train_batch()
-                inner_optimizer.step()
-                output = user.model(X)
-                pred = user.local_layers(output)
-                loss = user.loss(pred, y)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(user.model.parameters(), 50)
-                inner_optimizer.step()
-                user.local_optimizer.step()
-            
-            self.optimizer.zero_grad()
-            final_state = user.model.state_dict()
+                final_state = user.model.state_dict()
 
-            delta_theta = OrderedDict({k: inner_state[k] - final_state[k] for k in weights.keys()})
+                delta_theta = OrderedDict({k: inner_state[k] - final_state[k] for k in weights.keys()})
 
-            # calculating phi gradient
-            hnet_grads = torch.autograd.grad(
-                list(weights.values()), self.hnet.parameters(), grad_outputs=list(delta_theta.values())
-            )
+                # calculating phi gradient
+                hnet_grads = torch.autograd.grad(
+                    list(weights.values()), self.hnet.parameters(), grad_outputs=list(delta_theta.values())
+                )
 
-            # update hnet weights
-            for p, g in zip(self.hnet.parameters(), hnet_grads):
-                p.grad = g
+                # update hnet weights
+                for p, g in zip(self.hnet.parameters(), hnet_grads):
+                    p.grad = g
 
-            torch.nn.utils.clip_grad_norm_(self.hnet.parameters(), 50)
-            self.optimizer.step()
+                torch.nn.utils.clip_grad_norm_(self.hnet.parameters(), 50)
+                self.optimizer.step()
 
                 
             if glob_iter % self.eval_every == 0:
@@ -156,8 +159,11 @@ class pFedHN(Server):
                 print("")
                 last_eval = glob_iter
                 self.hnet.eval()
-                for node_id in range(len(self.users)):
-                    weights = self.hnet(torch.tensor([node_id], dtype=torch.long).to(self.device))
+                for node_id in range(self.num_users):
+                    
+                    emb_node = torch.tensor([node_id], dtype=torch.long)
+                    emb_node = emb_node.to(self.device)
+                    weights = self.hnet(emb_node)
                     self.users[node_id].model.load_state_dict(weights)
                 self.evaluate()
                 self.hnet.train()
