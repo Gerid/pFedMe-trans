@@ -12,6 +12,7 @@ from FLAlgorithms.users.userpFedMe import UserpFedMe
 from FLAlgorithms.users.userpFedTrans import UserpFedTrans, Cluster
 from FLAlgorithms.servers.serverbase import Server
 from utils.model_utils import read_data, read_user_data
+from utils.dataset import gen_random_loaders
 import numpy as np
 
 from reformer_pytorch import *
@@ -64,8 +65,14 @@ class pFedTrans(Server):
             self.attn_learning_rate = 0.01
             self.intra_attn_model = Attn_Model().to(device)
             self.inter_attn_model = Attn_Model().to(device)
-        data = read_data(dataset)
-        total_users = len(data[0])
+
+        if self.dataset == 'Cifar10_hn':
+            dataset = 'Cifar10'
+            total_users = num_users
+        else:
+            data = read_data(dataset)
+            total_users = len(data[0])
+
         self.K = K
         self.personal_learning_rate = personal_learning_rate
         self.prev_per_values = [0] * total_users
@@ -86,10 +93,16 @@ class pFedTrans(Server):
 
         self.clusters = [Cluster(c_id, model[0]) for c_id in range(self.num_cluster)]
         for i in range(total_users):
-            id, train , test = read_user_data(i, data, dataset)
-            user = UserpFedTrans(device, id, train, test, model, batch_size, learning_rate, beta, lamda, local_epochs, optimizer, K, personal_learning_rate)
+            if self.dataset == 'Cifar10_hn':
+                id = None
+                train = None
+                test = None
+                user = UserpFedTrans(device, id, train, test, model, batch_size, learning_rate, beta, lamda, local_epochs, optimizer, K, personal_learning_rate, hn_dataset=True)
+            else:
+                id, train , test = read_user_data(i, data, dataset)
+                user = UserpFedTrans(device, id, train, test, model, batch_size, learning_rate, beta, lamda, local_epochs, optimizer, K, personal_learning_rate)
+                self.total_train_samples += user.train_samples
             self.users.append(user)
-            self.total_train_samples += user.train_samples
         print("Number of users / total users:",num_users, " / " ,total_users)
         print("Finished creating pFedMe server.")
 
@@ -106,6 +119,13 @@ class pFedTrans(Server):
 
     def train(self):
         every_recluster_eps = 5 
+        if self.dataset == 'Cifar10_hn':
+            gen_random_loaders(self, data_name='cifar10', data_path='data', num_users=self.num_users, bz=self.batch_size, classes_per_user=2)
+        self.total_train_samples = 0
+        for user in self.users:
+            self.total_train_samples += user.train_samples
+        
+
         for glob_iter in range(self.num_glob_iters):
             print("-------------Round number: ",glob_iter, "(Attn phase) -------------")
 

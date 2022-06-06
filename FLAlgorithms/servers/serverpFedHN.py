@@ -7,6 +7,7 @@ import time
 from FLAlgorithms.users.userpFedHN import UserpFedHN
 from FLAlgorithms.servers.serverbase import Server
 from utils.model_utils import read_data, read_user_data
+from utils.dataset import gen_random_loaders
 from FLAlgorithms.trainmodel.models import *
 import numpy as np
 from tqdm import trange
@@ -22,8 +23,13 @@ class pFedHN(Server):
                          local_epochs, optimizer, num_users, times)
 
         # Initialize data for all  users
-        data = read_data(dataset)
-        total_users = len(data[0])
+        
+        if self.dataset == 'Cifar10_hn':
+            dataset = 'Cifar10'
+            total_users = num_users
+        else:
+            data = read_data(dataset)
+            total_users = len(data[0])
         self.logger = logging.getLogger()
         self.K = K
         embed_dim = -1
@@ -68,10 +74,17 @@ class pFedHN(Server):
 
         self.personal_learning_rate = personal_learning_rate
         for i in range(total_users):
-            id, train , test = read_user_data(i, data, dataset)
-            user = UserpFedHN(device, id, train, test, self.net, batch_size, learning_rate, beta, lamda, local_epochs, optimizer, K, personal_learning_rate)
+            if self.dataset == 'Cifar10_hn':
+                id = None
+                train = None
+                test = None
+                user = UserpFedHN(device, id, train, test, self.net, batch_size, learning_rate, beta, lamda, local_epochs, optimizer, K, personal_learning_rate, hn_dataset=True)
+            else:
+                id, train , test = read_user_data(i, data, dataset)
+                user = UserpFedHN(device, id, train, test, self.net, batch_size, learning_rate, beta, lamda, local_epochs, optimizer, K, personal_learning_rate)
+                self.total_train_samples += user.train_samples
             self.users.append(user)
-            self.total_train_samples += user.train_samples
+            
         print("Number of users / total users:",num_users, " / " ,total_users)
         print("Finished creating pFedHN server.")
 
@@ -89,6 +102,12 @@ class pFedHN(Server):
     def train(self):
         loss = []
         step_iter = trange(self.num_glob_iters)
+        if self.dataset == 'Cifar10_hn':
+            gen_random_loaders(self, data_name='cifar10', data_path='data', num_users=self.num_users, bz=self.batch_size, classes_per_user=2)
+        self.total_train_samples = 0
+        for user in self.users:
+            self.total_train_samples += user.train_samples
+        
         for glob_iter in range(self.num_glob_iters):
             print("-------------Round number: ",glob_iter, " :pFedHN-------------")
 
@@ -182,5 +201,6 @@ class pFedHN(Server):
         if not os.path.exists(model_path):
             os.makedirs(model_path)
         torch.save(self.hnet, os.path.join(model_path, "server.hyper_net" + ".pt"))
+        
     
   

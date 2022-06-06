@@ -12,9 +12,9 @@ import copy
 
 class UserpFedHN(User):
     def __init__(self, device, numeric_id, train_data, test_data, model, batch_size, learning_rate,beta,lamda,
-                 local_epochs, optimizer, K, personal_learning_rate, n_kernels=16):
+                 local_epochs, optimizer, K, personal_learning_rate, n_kernels=16, hn_dataset=False):
         super().__init__(device, numeric_id, train_data, test_data, model, batch_size, learning_rate, beta, lamda,
-                         local_epochs)
+                         local_epochs,hn_dataset=hn_dataset)
 
 
         

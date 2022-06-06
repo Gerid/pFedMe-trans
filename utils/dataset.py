@@ -3,6 +3,7 @@ from collections import defaultdict
 
 import numpy as np
 import torch.utils.data
+from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 
@@ -152,7 +153,7 @@ def gen_data_split(dataset, num_users, class_partitions):
     return user_data_idx
 
 
-def gen_random_loaders(data_name, data_path, num_users, bz, classes_per_user=2):
+def gen_random_loaders(server, data_name='cifar10', data_path='data', num_users=50, bz=20, classes_per_user=2):
     """
     generates train/val/test loaders of each client
     :param data_name: name of dataset, choose from [cifar10, cifar100]
@@ -163,7 +164,6 @@ def gen_random_loaders(data_name, data_path, num_users, bz, classes_per_user=2):
     :return: train/val/test loaders of each client, list of pytorch dataloaders
     """
     loader_params = {"batch_size": bz, "shuffle": False, "pin_memory": True, "num_workers": 0}
-    dataloaders = []
     datasets = get_datasets(data_name, data_path, normalize=True)
     for i, d in enumerate(datasets):
         # ensure same partition for train/test/val
@@ -173,7 +173,21 @@ def gen_random_loaders(data_name, data_path, num_users, bz, classes_per_user=2):
         usr_subset_idx = gen_data_split(d, num_users, cls_partitions)
         # create subsets for each client
         subsets = list(map(lambda x: torch.utils.data.Subset(d, x), usr_subset_idx))
-        # create dataloaders from subsets
-        dataloaders.append(list(map(lambda x: torch.utils.data.DataLoader(x, **loader_params), subsets)))
+        if i == 0:
+            for subset, user in zip(subsets, server.users):
+                loader_params = {"batch_size": bz, "shuffle": True, "pin_memory": True, "num_workers": 0}
+                user.trainloader = DataLoader(subset, **loader_params)
+                full_loader_params = {"batch_size": len(subset), "shuffle": True, "pin_memory": True, "num_workers": 0}
+                user.trainloaderfull = DataLoader(subset, **full_loader_params)
+                user.iter_trainloader = iter(user.trainloader)
+                user.train_samples = len(subset)
 
-    return dataloaders
+        if i == 2:
+            for subset, user in zip(subsets, server.users):
+                loader_params = {"batch_size": bz, "shuffle": False, "pin_memory": True, "num_workers": 0}
+                user.testloader =  DataLoader(subset, **loader_params)
+                full_loader_params = {"batch_size": len(subset), "shuffle": False, "pin_memory": True, "num_workers": 0}
+                user.testloaderfull = DataLoader(subset, **full_loader_params)
+                user.iter_testloader = iter(user.testloader)
+                user.test_samples = len(subset)
+

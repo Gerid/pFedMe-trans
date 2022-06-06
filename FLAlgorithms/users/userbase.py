@@ -11,24 +11,27 @@ class User:
     """
     Base class for users in federated learning.
     """
-    def __init__(self, device, id, train_data, test_data, model, batch_size = 0, learning_rate = 0, beta = 0 , lamda = 0, local_epochs = 0):
+    def __init__(self, device, id, train_data, test_data, model, batch_size = 0, learning_rate = 0, beta = 0 , lamda = 0, local_epochs = 0, hn_dataset=False):
 
         self.device = device
         self.model = copy.deepcopy(model)
         self.id = id  # integer
-        self.train_samples = len(train_data)
-        self.test_samples = len(test_data)
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.beta = beta
         self.lamda = lamda
         self.local_epochs = local_epochs
-        self.trainloader = DataLoader(train_data, self.batch_size)
-        self.testloader =  DataLoader(test_data, self.batch_size)
-        self.testloaderfull = DataLoader(test_data, self.test_samples)
-        self.trainloaderfull = DataLoader(train_data, self.train_samples)
-        self.iter_trainloader = iter(self.trainloader)
-        self.iter_testloader = iter(self.testloader)
+        if hn_dataset == True:
+            print("using hn dataset")
+        else:
+            self.trainloader = DataLoader(train_data, self.batch_size)
+            self.testloader =  DataLoader(test_data, self.batch_size)
+            self.testloaderfull = DataLoader(test_data, self.test_samples)
+            self.trainloaderfull = DataLoader(train_data, self.train_samples)
+            self.iter_trainloader = iter(self.trainloader)
+            self.iter_testloader = iter(self.testloader)
+            self.train_samples = len(train_data)
+            self.test_samples = len(test_data)
 
         # those parameters are for persionalized federated learing.
         self.local_model = copy.deepcopy(list(self.model.parameters()))
