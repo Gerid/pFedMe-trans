@@ -23,6 +23,7 @@ def main(dataset, algorithm, model, batch_size, learning_rate, beta, lamda, num_
     # Get device status: Check GPU or CPU
     device = torch.device("cuda:{}".format(gpu) if torch.cuda.is_available() and gpu != -1 else "cpu")
 
+    os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
     for i in range(times):
         print("---------------Running time:------------",i)
         # Generate model

@@ -75,22 +75,6 @@ class pFedTrans(Server):
         self.emb_layer = nn.Linear(len(nn.utils.parameters_to_vector(self.per_values)),emb_dim).to(device)
         self.num_cluster = num_cluster
 
-        self.logger = logging.getLogger('server')
-        self.logger.setLevel(logging.DEBUG)
-        #create file handler
-        self.fh = logging.FileHandler('server.log')
-        self.fh.setLevel(logging.INFO)
-
-        self.ch = logging.StreamHandler()
-        self.ch.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        self.fh.setFormatter(formatter)
-        self.ch.setFormatter(formatter)
-        self.logger.addHandler(self.fh)
-        self.logger.addHandler(self.ch)
-        
-        self.logger.info('creating server')
-
         self.alpha_layer = nn.Linear(emb_dim, 1).to(device)
         self.attn_optimizer = torch.optim.SGD([
                 {'params': self.emb_layer.parameters()},
