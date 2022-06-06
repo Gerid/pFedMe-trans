@@ -135,8 +135,8 @@ class CNNCifar(nn.Module):
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(n_kernels, n_kernels * 2, 5)
         self.fc1 = nn.Linear(2 * n_kernels * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_classes)
+        self.fc2 = nn.Linear(120, 100)
+        self.fc3 = nn.Linear(100, num_classes)
 
         self.weight_keys = [['fc1.weight', 'fc1.bias'],
                             ['fc2.weight', 'fc2.bias'],
@@ -193,14 +193,14 @@ class CNNHyperPC(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
-        self.c1_weights = nn.Linear(hidden_dim, 6 * self.in_channels * 5 * 5)
+        self.c1_weights = nn.Linear(hidden_dim, self.n_kernels * self.in_channels * 5 * 5)
         self.c1_bias = nn.Linear(hidden_dim, self.n_kernels)
         self.c2_weights = nn.Linear(hidden_dim, 2 * self.n_kernels * self.n_kernels * 5 * 5)
         self.c2_bias = nn.Linear(hidden_dim, 2 * self.n_kernels)
         self.l1_weights = nn.Linear(hidden_dim, 120 * 2 * self.n_kernels * 5 * 5)
         self.l1_bias = nn.Linear(hidden_dim, 120)
-        self.l2_weights = nn.Linear(hidden_dim, 84 * 120)
-        self.l2_bias = nn.Linear(hidden_dim, 84)
+        self.l2_weights = nn.Linear(hidden_dim, 100 * 120)
+        self.l2_bias = nn.Linear(hidden_dim, 100)
 
         if spec_norm:
             self.c1_weights = spectral_norm(self.c1_weights)
@@ -223,7 +223,7 @@ class CNNHyperPC(nn.Module):
             "conv2.bias": self.c2_bias(features).view(-1),
             "fc1.weight": self.l1_weights(features).view(120, 2 * self.n_kernels * 5 * 5),
             "fc1.bias": self.l1_bias(features).view(-1),
-            "fc2.weight": self.l2_weights(features).view(84, 120),
+            "fc2.weight": self.l2_weights(features).view(100, 120),
             "fc2.bias": self.l2_bias(features).view(-1),
         }
         return weights
@@ -233,10 +233,10 @@ class CNNTargetPC(nn.Module):
     def __init__(self, in_channels=3, n_kernels=16):
         super().__init__()
 
-        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.conv1 = nn.Conv2d(in_channels, n_kernels, 5)
         self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.conv2 = nn.Conv2d(n_kernels,2*n_kernels, 5)
+        self.fc1 = nn.Linear(2 * n_kernels * 5 * 5, 120)
         self.fc2 = nn.Linear(120, 100)
 
     def forward(self, x):
